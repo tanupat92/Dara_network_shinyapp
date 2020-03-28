@@ -11,26 +11,36 @@ library(shiny)
 library(visNetwork)
 library(shinyWidgets)
 library(shinythemes)
+library(DT)
 
-# Define UI for application that draws a histogram
 shinyUI(fluidPage(
   
   # Application title
-  titlePanel("Star Network"),
+  titlePanel("Dara Network"),
   theme = shinythemes::shinytheme('paper'),
-  # Sidebar with a slider input for number of bins 
   sidebarLayout(
     sidebarPanel(
       pickerInput("class",
-                  "Choose modularity class",
+                  "Choose modularity class (Greedy modularity maximization):",
                   choices = 1:20),
+      checkboxGroupInput(
+        inputId = "central",
+        label = "Choose centrality measures:", 
+        choiceNames = c("Degree", "Betweenness", "Closeness", "Eigenvector","PageRank"),
+        choiceValues = c(1,2,3,4,5),
+        selected = c(1,2,3,4,5),
+        inline = FALSE
+      ),
+      sliderInput("top", "Pick the number of top rank nodes:", min = 1, max = 30, value = 10,step =1),
       actionButton('show_graph', 'Show'))
     ,
     mainPanel(
-      visNetworkOutput("network")
+      tabsetPanel(
+        tabPanel('network', visNetworkOutput("network")),
+        tabPanel('table', DT::dataTableOutput("table"))
+      )
+      
     )
-    
-    # Show a plot of the generated distribution
     
   )
 ))
