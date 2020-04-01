@@ -13,10 +13,10 @@ library(igraph)
 library(tidyverse)
 library(DT)
 
-modularList <- list('Whole graph' = 21, '1'=1, '2'=2, '3'=3, '4'=4, Chinese=5, '6'=6, Hollywood=7,'8'=8,'9'=9,'10'=10,'11'=11,'12'=12,'13'=13,
-                    '14'=14,'15'=15,'16'=16,'17'=17,'18'=18,'19'=19,'20'=20)
-eigenvectorList <- list('Whole graph' = 19, '1'=1, '2'=2, '3'=3, '4'=4, '5'=5, '6'=6, '7'=7,'8'=8,'9'=9,'10'=10,'11'=11,'12'=12,'13'=13,
-                        '14'=14,'15'=15,'16'=16,'17'=17,'18'=18)
+modularList <- list('Whole graph' = 21, '1'=1, '2'=2, '3'=3, '4'=4, Chinese=5, '6'=6, Hollywood=7,Country=8,Channel3=9,'10'=10,'11'=11,'12'=12,'13'=13,
+                    Reporter=14,GirlyBerry=15,Hollywood2=16,'17'=17,'18'=18,'19'=19,'20'=20)
+eigenvectorList <- list('Whole graph' = 20, Chinese=1, '2'=2, '3'=3, Country=4, '5'=5, '6'=6, '7'=7,'8'=8,Hollywood=9,'10'=10,'Chinese Hollywood'=11,'12'=12,'13'=13,
+                        '14'=14,'15'=15,'16'=16,Director=17,'18'=18,'19'=19)
 averageCentrality <- function(graph, sel = c(1,2,3,4,5), topN = 10, digits =2){
   #'input igraph type, output data.frame of nodes ranked by average centrality
   avLis <- list()
@@ -64,8 +64,9 @@ averageCentrality <- function(graph, sel = c(1,2,3,4,5), topN = 10, digits =2){
     colnames(rankAv) <- c('name', 'average', names(avLis))
   } else{
     df$name <- rownames(df)
-    df <- df[,c(2,1)]
-    rankAv <- df %>% mutate(average = df[,2])
+    df <- merge(df, data.frame(avLis[1]), by = 0, all=TRUE)
+    df <- df[,c(3,4)]
+    rankAv <- df %>% mutate(average = df[,2])%>% arrange(desc(average))
   }
   round_df <- function(x, digits) {
     numeric_columns <- sapply(x, mode) == 'numeric'
@@ -79,34 +80,42 @@ averageCentrality <- function(graph, sel = c(1,2,3,4,5), topN = 10, digits =2){
 gUn <- readRDS('gUn.rds')
 
 
-commList[[21]] <- gUn
-
+makeSubgraphCluster <- function(graph, cluster=c(cluster_fast_greedy, cluster_leading_eigen), weight = c(TRUE,FALSE), weightname, includeWhole= TRUE, special){
+  if (special == "Greedy modularity maximization"){
+    den <- cluster_fast_greedy(graph, weights = E(graph)$total)
+  } else if (special == "Leading eigenvector (unweighted)"){
+    den <- cluster_leading_eigen(graph, weights =NULL)
+  } else{
+    w <- ifelse(weight, E(graph)$weightname, NULL)
+    den <- cluster(graph, weights = w)
+  }
+  commList <- list()
+  
+  n <- max(den$membership)
+  for (i in 1:n){
+    commList[[i]] <- induced_subgraph(graph, vids=den$membership==i)
+  }
+  if (includeWhole){
+    commList[[n+1]] <- graph
+  }
+  return(commList)
+}
 
 server <- function(input, output,session) {
 
-  reactive({
-    denW <- ifelse(input$community=="Greedy modularity maximization", 
-                             cluster_fast_greedy(gUn, weights = E(gUn)$total), 
-                             cluster_leading_eigen(gUn, weights = NULL))
-    commList <- list()
-    c <- ifelse(input$community=="Greedy modularity maximization", 20,18)
-    for (i in 1:c){
-    commList[[i]] <- induced_subgraph(gUn, vids=denW$membership == i )
-  }})
-  
-  
-  
-  df <- reactive({averageCentrality(commList[[as.integer(input$class)]],sel = input$central, topN = as.integer(input$top))})
-  dffull <- reactive({averageCentrality(commList[[as.integer(input$class)]], topN=gorder(commList[[as.integer(input$class)]]))})
+  commList <- reactive({ makeSubgraphCluster(gUn,NULL, NULL,NULL, TRUE, input$community )
+  })
+  df <- reactive({averageCentrality(commList()[[as.integer(input$class)]],sel = input$central, topN = as.integer(input$top))})
+  dffull <- eventReactive(input$show_graph,{averageCentrality(commList()[[as.integer(input$class)]], topN=gorder(commList()[[as.integer(input$class)]]))})
   value <- reactive({df() %>% mutate(triple=average*20) %>% .[['triple']]})
-  graph <- reactive({commList[[as.integer(input$class)]] %>%set.vertex.attribute(name='value', index=V(commList[[as.integer(input$class)]])[V(commList[[as.integer(input$class)]])$name %in% df()[['name']]], value = as.integer(value()))})
-  graph2 <- reactive({graph() %>%set.vertex.attribute(name='value', index=V(commList[[as.integer(input$class)]])[!(V(commList[[as.integer(input$class)]])$name %in% df()[['name']])], value = as.integer(5))})
+  graph <- reactive({commList()[[as.integer(input$class)]] %>%set.vertex.attribute(name='value', index=V(commList()[[as.integer(input$class)]])[V(commList()[[as.integer(input$class)]])$name %in% df()[['name']]], value = as.integer(value()))})
+  graph2 <- reactive({graph() %>%set.vertex.attribute(name='value', index=V(commList()[[as.integer(input$class)]])[!(V(commList()[[as.integer(input$class)]])$name %in% df()[['name']])], value = as.integer(5))})
   data <- eventReactive(input$show_graph,{graph2() %>% 
-      set.vertex.attribute(name='group', index=V(commList[[as.integer(input$class)]])[V(commList[[as.integer(input$class)]])$name %in% df()[['name']]], value = paste('top',as.integer(input$top))) %>%
+      set.vertex.attribute(name='group', index=V(commList()[[as.integer(input$class)]])[V(commList()[[as.integer(input$class)]])$name %in% df()[['name']]], value = paste('top',as.integer(input$top))) %>%
       toVisNetworkData()})
   output$network <- renderVisNetwork({
     net <- data()
-    reactive({net$nodes[net$nodes['id']] %in% averageCentrality(commList[[as.integer(input$class)]])$name})
+    #reactive({net$nodes[net$nodes['id']] %in% averageCentrality(commList()[[as.integer(input$class)]])$name})
     visNetwork(net$nodes, net$edges) %>%
       visNodes(font = list(size=20)) %>%
       visOptions(selectedBy = list(variable="group",main = "All nodes", selected = paste('top', input$top)), 
@@ -129,7 +138,7 @@ server <- function(input, output,session) {
                         selected = 1)
     } else {
       updateSelectInput(session, "class",
-                        label = paste("Select from 18 classes or the whole graph:"),
+                        label = paste("Select from 19 classes or the whole graph:"),
                         choices = eigenvectorList,
                         selected = 1)
     }
